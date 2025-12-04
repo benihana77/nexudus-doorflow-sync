@@ -15,6 +15,7 @@ nexudus_auth = (secrets['nexudus_username'],
 logging.basicConfig(level=logging.DEBUG)
 
 update_frequency = 1  # in minutes
+REQUEST_TIMEOUT = 10  # seconds
 
 
 class coworker():
@@ -103,7 +104,13 @@ class coworker():
     def get_doorflow_info(self):
         email = urllib.parse.quote_plus(self.email_address, safe='@')
         url = f"https://admin.doorflow.com/api/2/people?email={email}"
-        doorflow_user = requests.get(url, auth=doorflow_auth)
+        try:
+            doorflow_user = requests.get(
+                url, auth=doorflow_auth, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.RequestException as exc:
+            logging.debug(
+                f'{self.nexudus_coworker_id} - Doorflow user request failed: {exc}')
+            return
         if doorflow_user.status_code == 200:
             logging.debug(
                 f'{self.nexudus_coworker_id} - Successfully Found DoorFlow User')
@@ -152,7 +159,13 @@ class coworker():
         logging.debug(
             f'{self.nexudus_coworker_id} - Getting all Unpaid Invoices From Nexudus')
         url = "https://spaces.nexudus.com/api/billing/coworkerinvoices?page=1&size=50&CoworkerInvoice_Paid=false"
-        due_invoices = requests.get(url, auth=nexudus_auth)
+        try:
+            due_invoices = requests.get(
+                url, auth=nexudus_auth, timeout=REQUEST_TIMEOUT)
+        except requests.exceptions.RequestException as exc:
+            logging.debug(
+                f'{self.nexudus_coworker_id} - Invoice request failed: {exc}')
+            return
         if due_invoices.status_code == 200:
             logging.debug(
                 f'{self.nexudus_coworker_id} - Successfully Requested Invoices from Nexudus')
@@ -267,8 +280,18 @@ class coworker():
         if self.doorflow_user_id is None:
             logging.debug(f'{self.nexudus_coworker_id} - Creating New User')
             url = 'https://api.doorflow.com/api/2/people'
-            r = requests.post(url, auth=doorflow_auth,
-                              json=self.doorflow_payload)
+            try:
+                r = requests.post(
+                    url,
+                    auth=doorflow_auth,
+                    json=self.doorflow_payload,
+                    timeout=REQUEST_TIMEOUT,
+                )
+            except requests.exceptions.RequestException as exc:
+                logging.info(
+                    f'{self.nexudus_coworker_id} - Failed to create new user in Doorflow')
+                logging.info(f'{self.nexudus_coworker_id} - {exc}')
+                return
             if r.status_code == 201:
                 logging.info(
                     f'{self.nexudus_coworker_id} - {self.nexudus_full_name} created in Doorflow')
@@ -282,8 +305,19 @@ class coworker():
             logging.debug('Updating User')
             url = 'https://api.doorflow.com/api/2/person/{}'.format(
                 self.doorflow_user_id)
-            r = requests.put(url, auth=doorflow_auth,
-                             json=self.doorflow_payload)
+            try:
+                r = requests.put(
+                    url,
+                    auth=doorflow_auth,
+                    json=self.doorflow_payload,
+                    timeout=REQUEST_TIMEOUT,
+                )
+            except requests.exceptions.RequestException as exc:
+                logging.info(
+                    f'{self.nexudus_coworker_id} - Failed to update user in Doorflow')
+                logging.info(f'{self.nexudus_coworker_id} - {exc}')
+                self.updates_successful = False
+                return
             if r.status_code == 201:
                 logging.info(
                     f'{self.nexudus_coworker_id} - {self.first_name} {self.last_name} updated in Doorflow')
@@ -363,7 +397,11 @@ def get_user_updates():
 
     all_updates = []
 
-    r = requests.get(url, auth=nexudus_auth)
+    try:
+        r = requests.get(url, auth=nexudus_auth, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.RequestException as exc:
+        logging.info(f"Failed Request for user updates: {exc}")
+        return False
     if r.status_code == 200:
         logging.debug("Good response from user updates request")
         logging.info(f"{len(r.json()['Records'])} User Updates")
@@ -374,18 +412,31 @@ def get_user_updates():
         return False
 
     url = f"https://spaces.nexudus.com/api/billing/coworkerinvoices?page=1&size=50&from_CoworkerInvoice_PaidOn={start_string}"
-    r = requests.get(url, auth=nexudus_auth)
+    try:
+        r = requests.get(url, auth=nexudus_auth, timeout=REQUEST_TIMEOUT)
+    except requests.exceptions.RequestException as exc:
+        logging.info(f"Failed Request for paid invoice updates: {exc}")
+        return {'Records': all_updates}
     if r.status_code == 200:
         ids = [x['CoworkerId'] for x in r.json()['Records'] if not x['IsDue']]
         logging.debug("Good response from paid invoice request")
         logging.info(f"{len(ids)} Users Have Paid Invoices")
+    else:
+        logging.info(
+            f"Failed Request for paid invoice updates (status {r.status_code})")
+        ids = []
 
     if len(ids) > 0:
         for id in ids:
             url = f"https://spaces.nexudus.com/api/spaces/coworkers/{id}"
-            r = requests.get(url, auth=nexudus_auth)
-            user = r.json()
-            all_updates.append(user)
+            try:
+                r = requests.get(url, auth=nexudus_auth,
+                                 timeout=REQUEST_TIMEOUT)
+                user = r.json()
+                all_updates.append(user)
+            except requests.exceptions.RequestException as exc:
+                logging.info(
+                    f"Failed to fetch coworker {id} during invoice sweep: {exc}")
 
     return {'Records':all_updates}
 
@@ -393,8 +444,12 @@ def get_user_updates():
 def push_doorflow_sync():
 
     url = 'https://api.doorflow.com/api/2/sync'
-    requests.post(url, auth=doorflow_auth)
-    print('Update Doorflow Success')
+    try:
+        r = requests.post(url, auth=doorflow_auth, timeout=REQUEST_TIMEOUT)
+        r.raise_for_status()
+        print('Update Doorflow Success')
+    except requests.exceptions.RequestException as exc:
+        logging.info(f'Failed to push Doorflow sync: {exc}')
 
 
 def update_users(all_updates):
@@ -422,17 +477,20 @@ def main():
     next_run = now - datetime.timedelta(minutes=update_frequency)
 
     while True:
+        updates_sent = False
         now = datetime.datetime.now(datetime.timezone.utc)
 
         if now < next_run:
+            time.sleep(1)
             continue
 
         try:
             updates = get_user_updates()
             if updates:
                 updates_sent = update_users(updates)
-        except:
-            time.sleep(1)
+        except Exception:
+            logging.exception('Unexpected error during update cycle')
+            time.sleep(5)
             continue
 
         if updates_sent:

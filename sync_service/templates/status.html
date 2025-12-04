@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nexudus → Doorflow Sync Status</title>
+    <style>
+      body { font-family: Arial, sans-serif; background-color: #f5f6fa; color: #2c3e50; margin: 0; }
+      header { background: #2c3e50; color: #ecf0f1; padding: 16px 24px; }
+      h1 { margin: 0; font-size: 22px; }
+      main { padding: 24px; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+      .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); padding: 16px; }
+      .card h2 { margin: 0 0 8px; font-size: 14px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card .value { font-size: 22px; font-weight: 600; color: #2c3e50; }
+      table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); overflow: hidden; }
+      th, td { padding: 12px; text-align: left; }
+      th { background: #ecf0f1; font-size: 13px; color: #7f8c8d; }
+      tr:nth-child(even) { background: #f9fbfd; }
+      .status { padding: 4px 8px; border-radius: 6px; font-size: 12px; display: inline-block; }
+      .status.applied { background: #e8f5e9; color: #2e7d32; }
+      .status.failed { background: #ffebee; color: #c62828; }
+      .status.pending { background: #fff8e1; color: #ef6c00; }
+      @media (max-width: 768px) { th, td { font-size: 12px; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Nexudus → Doorflow Sync Status</h1>
+    </header>
+    <main>
+      <section class="cards">
+        <div class="card">
+          <h2>Last Nexudus Poll</h2>
+          <div class="value">{{ last_poll }}</div>
+        </div>
+        <div class="card">
+          <h2>Last Reader Sync</h2>
+          <div class="value">{{ last_reader_sync }}</div>
+        </div>
+        <div class="card">
+          <h2>Total Members</h2>
+          <div class="value">{{ total_members }}</div>
+        </div>
+        <div class="card">
+          <h2>Active Members</h2>
+          <div class="value">{{ active_members }}</div>
+        </div>
+        <div class="card">
+          <h2>Teams</h2>
+          <div class="value">{{ team_count }}</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Recent Changes</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Member</th>
+              <th>Change</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th>Created</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for change in recent_changes %}
+            <tr>
+              <td>{{ change.id }}</td>
+              <td>{{ change.member_id }}</td>
+              <td>{{ change.change_type }}</td>
+              <td>{{ change.description }}</td>
+              <td>
+                {% set status = (change.doorflow_status or 'pending').lower() %}
+                <span class="status {{ status }}">{{ change.doorflow_status or 'pending' }}</span>
+              </td>
+              <td>{{ change.created_at }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="6">No changes have been recorded yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>

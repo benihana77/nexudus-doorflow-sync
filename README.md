@@ -8,7 +8,7 @@ This branch contains a ground-up rebuild of the synchronisation service so that 
 - Triggers Doorflow reader syncs only when changes were applied and no more often than the configured interval.
 - Exposes health and readiness endpoints and uses structured logging.
 
-The legacy scripts (`newSync.py`, `update_all_users.py`) remain for reference but the recommended entrypoint is `main.py`.
+Run the service via the modern entrypoint `main.py`; legacy one-off scripts have been removed.
 
 ## Getting started
 
